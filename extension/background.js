@@ -1,7 +1,7 @@
 // background.js
 // Service worker — persistent socket connection + message bridge between popup and content script
 
-importScripts('https://cdn.socket.io/4.7.2/socket.io.min.js');
+importScripts('socket.io.min.js');
 
 const SERVER_URL = 'http://localhost:3001'; // swap to Render URL in Phase 7
 
