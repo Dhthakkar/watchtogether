@@ -4,11 +4,7 @@
   "version": "0.1.0",
   "description": "Watch parties for couples and friend groups",
 
-  "permissions": [
-    "activeTab",
-    "storage",
-    "scripting"
-  ],
+  "permissions": ["activeTab", "storage", "scripting"],
 
   "host_permissions": [
     "https://www.netflix.com/*",
@@ -16,12 +12,11 @@
     "https://www.amazon.com/*",
     "https://www.primevideo.com/*",
     "https://www.hotstar.com/*",
-    "https://www.sonyliv.com/*"
+    "https://www.sonyliv.com/*",
+    "<all_urls>"
   ],
 
-  "background": {
-    "service_worker": "background.js"
-  },
+  "background": { "service_worker": "background.js" },
 
   "action": {
     "default_popup": "popup.html",
@@ -43,6 +38,11 @@
         "https://www.sonyliv.com/*"
       ],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["screenshare.js"],
       "run_at": "document_idle"
     }
   ],
