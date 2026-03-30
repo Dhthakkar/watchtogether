@@ -1,100 +1,70 @@
-// webrtc.js
-// Manages RTCPeerConnection for Together mode face cam
-// Handles: getUserMedia, offer/answer, ICE candidates, stream attach
+// webrtc.js — runs in MAIN world
+// Listens for commands from content.js via postMessage
 
 const TURN_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    // TURN creds injected at runtime from Metered.ca (Phase 7)
-    // { urls: 'turn:...', username: '...', credential: '...' }
-  ]
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
 };
 
-class WatchTogetherWebRTC {
-  constructor({ onRemoteStream, onSignal }) {
-    this.pc = null;
-    this.localStream = null;
-    this.onRemoteStream = onRemoteStream; // cb: receives remote MediaStream
-    this.onSignal = onSignal;             // cb: sends signal via background.js
-  }
+(function () {
+  let pc = null;
+  let localStream = null;
 
-  // --- START LOCAL CAM ---
-  async startLocalStream() {
-    this.localStream = await navigator.mediaDevices.getUserMedia({
+  async function startRTC(isHost, peerId) {
+    // Get local cam
+    localStream = await navigator.mediaDevices.getUserMedia({
       video: { width: 160, height: 120, facingMode: 'user' },
       audio: true
     });
-    return this.localStream;
-  }
+    window.WatchTogetherPiP.attachStream(localStream, 'local');
 
-  // --- CREATE PEER CONNECTION ---
-  createPeer() {
-    this.pc = new RTCPeerConnection(TURN_CONFIG);
+    pc = new RTCPeerConnection(TURN_CONFIG);
+    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
 
-    // Add local tracks to the connection
-    this.localStream.getTracks().forEach(track => {
-      this.pc.addTrack(track, this.localStream);
-    });
-
-    // When remote track arrives, surface it via callback
-    this.pc.ontrack = (e) => {
-      if (e.streams[0]) this.onRemoteStream(e.streams[0]);
+    pc.ontrack = (e) => {
+      if (e.streams[0]) window.WatchTogetherPiP.attachStream(e.streams[0], 'remote');
     };
 
-    // Send ICE candidates to peer via signaling server
-    this.pc.onicecandidate = (e) => {
+    pc.onicecandidate = (e) => {
       if (e.candidate) {
-        this.onSignal({ type: 'ice', candidate: e.candidate });
+        window.postMessage({ wtEvent: 'signal', signal: { type: 'ice', candidate: e.candidate } }, '*');
       }
     };
-  }
 
-  // --- HOST: CREATE OFFER ---
-  async createOffer() {
-    this.createPeer();
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    this.onSignal({ type: 'offer', sdp: offer });
-  }
-
-  // --- GUEST: HANDLE OFFER + CREATE ANSWER ---
-  async handleOffer(sdp) {
-    this.createPeer();
-    await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-    this.onSignal({ type: 'answer', sdp: answer });
-  }
-
-  // --- HOST: HANDLE ANSWER ---
-  async handleAnswer(sdp) {
-    await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
-  }
-
-  // --- BOTH: ADD ICE CANDIDATE ---
-  async handleIce(candidate) {
-    try {
-      await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (e) {
-      console.warn('WatchTogether: ICE error', e);
+    if (isHost) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      window.postMessage({ wtEvent: 'signal', signal: { type: 'offer', sdp: offer } }, '*');
     }
   }
 
-  // --- TOGGLE CAM ON/OFF ---
-  toggleVideo(enabled) {
-    this.localStream?.getVideoTracks().forEach(t => t.enabled = enabled);
-  }
+  window.addEventListener('message', async (e) => {
+    if (e.source !== window || !e.data?.wtCmd) return;
 
-  // --- TOGGLE MIC ON/OFF ---
-  toggleAudio(enabled) {
-    this.localStream?.getAudioTracks().forEach(t => t.enabled = enabled);
-  }
+    if (e.data.wtCmd === 'startRTC') {
+      await startRTC(e.data.isHost, e.data.peerId);
+    }
 
-  // --- CLEANUP ---
-  destroy() {
-    this.localStream?.getTracks().forEach(t => t.stop());
-    this.pc?.close();
-    this.pc = null;
-    this.localStream = null;
-  }
-}
+    if (e.data.wtCmd === 'rtcSignal' && pc) {
+      const { signal } = e.data;
+      if (signal.type === 'offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        window.postMessage({ wtEvent: 'signal', signal: { type: 'answer', sdp: answer } }, '*');
+      }
+      if (signal.type === 'answer') await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+      if (signal.type === 'ice')    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+    }
+
+    if (e.data.wtCmd === 'toggleCam' && localStream) {
+      localStream.getVideoTracks().forEach(t => t.enabled = !t.enabled);
+    }
+    if (e.data.wtCmd === 'toggleMic' && localStream) {
+      localStream.getAudioTracks().forEach(t => t.enabled = !t.enabled);
+    }
+    if (e.data.wtCmd === 'destroy') {
+      localStream?.getTracks().forEach(t => t.stop());
+      pc?.close(); pc = null; localStream = null;
+    }
+  });
+})();

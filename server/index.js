@@ -39,7 +39,7 @@ io.on('connection', (socket) => {
   socket.on('create-room', ({ mode }) => {
     const roomId = generateRoomId();
     const roomSecret = crypto.randomBytes(16).toString('hex');
-    const expiresAt = Date.now() + 10 * 60 * 1000;
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
 
     rooms[roomId] = {
       mode,
