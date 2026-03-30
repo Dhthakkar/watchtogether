@@ -1,5 +1,5 @@
-// content.js — isolated world
-// Talks to pip.js + webrtc.js (MAIN world) via postMessage bridge
+// content.js — isolated world, all-in-one
+// PiP UI + WebRTC + sync all live here, no world separation issues
 
 (function () {
   if (window.__watchTogetherLoaded) return;
@@ -8,54 +8,119 @@
   let session = null;
   let video = null;
   let isSyncing = false;
+  let pc = null;
+  let localStream = null;
 
-  // --- LOAD SESSION ---
   chrome.storage.local.get('session', (result) => {
     if (!result.session) return;
     session = result.session;
     detectVideo();
-    if (session.mode === 'together') initWebRTC();
+    if (session.mode === 'together') initPiP();
   });
 
-  // --- INIT WEBRTC VIA MAIN WORLD ---
-  function initWebRTC() {
-    // Tell pip.js (MAIN world) to init overlay
-    window.postMessage({ wtCmd: 'init' }, '*');
+  function initPiP() {
+    if (document.getElementById('wt-pip')) return;
 
-    // Tell webrtc.js (MAIN world) to start — pass session data
-    window.postMessage({
-      wtCmd: 'startRTC',
-      isHost: session.isHost,
-      peerId: session.peerId || null
-    }, '*');
+    const style = document.createElement('style');
+    style.textContent = `
+      #wt-pip { position:fixed; bottom:24px; right:24px; z-index:2147483647; user-select:none; }
+      #wt-pip-inner { display:flex; flex-direction:column; align-items:center; gap:6px;
+        background:rgba(0,0,0,0.8); border-radius:12px; padding:8px;
+        box-shadow:0 4px 20px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.1); }
+      #wt-remote,#wt-local { width:120px; height:90px; border-radius:8px; background:#111; object-fit:cover; }
+      #wt-pip-controls { display:flex; gap:8px; }
+      #wt-pip-controls button { background:rgba(255,255,255,0.1); border:none; border-radius:6px;
+        padding:4px 8px; cursor:pointer; font-size:14px; color:white; }
+      #wt-pip-controls button:hover { background:rgba(255,255,255,0.25); }
+      #wt-drag-handle { color:rgba(255,255,255,0.4); cursor:grab; font-size:16px; text-align:center; width:100%; }
+      #wt-pip.hidden #wt-remote, #wt-pip.hidden #wt-local, #wt-pip.hidden #wt-pip-controls { display:none; }
+    `;
+    document.head.appendChild(style);
+
+    const pip = document.createElement('div');
+    pip.id = 'wt-pip';
+    pip.innerHTML = `
+      <div id="wt-pip-inner">
+        <video id="wt-remote" autoplay playsinline></video>
+        <video id="wt-local"  autoplay playsinline muted></video>
+        <div id="wt-pip-controls">
+          <button id="wt-btn-cam">cam</button>
+          <button id="wt-btn-mic">mic</button>
+          <button id="wt-btn-vis">hide</button>
+        </div>
+        <div id="wt-drag-handle">drag</div>
+      </div>
+    `;
+    document.body.appendChild(pip);
+
+    const handle = pip.querySelector('#wt-drag-handle');
+    let sx, sy, sr, sb;
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const r = pip.getBoundingClientRect();
+      sx = e.clientX; sy = e.clientY;
+      sr = window.innerWidth - r.right;
+      sb = window.innerHeight - r.bottom;
+      const mv = (e) => {
+        pip.style.right  = Math.max(0, sr + (sx - e.clientX)) + 'px';
+        pip.style.bottom = Math.max(0, sb + (sy - e.clientY)) + 'px';
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', mv);
+        document.removeEventListener('mouseup', up);
+      };
+      document.addEventListener('mousemove', mv);
+      document.addEventListener('mouseup', up);
+    });
+
+    pip.querySelector('#wt-btn-vis').addEventListener('click', () => pip.classList.toggle('hidden'));
+    pip.querySelector('#wt-btn-cam').addEventListener('click', () => {
+      localStream && localStream.getVideoTracks().forEach(t => { t.enabled = !t.enabled; });
+    });
+    pip.querySelector('#wt-btn-mic').addEventListener('click', () => {
+      localStream && localStream.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
+    });
+
+    startWebRTC();
   }
 
-  // --- LISTEN FOR EVENTS FROM MAIN WORLD ---
-  window.addEventListener('message', (e) => {
-    if (e.source !== window) return;
-
-    // Cam/mic toggle buttons clicked in pip.js
-    if (e.data?.wtEvent === 'toggleCam') {
-      window.postMessage({ wtCmd: 'toggleCam' }, '*');
-    }
-    if (e.data?.wtEvent === 'toggleMic') {
-      window.postMessage({ wtCmd: 'toggleMic' }, '*');
-    }
-
-    // webrtc.js needs to send a signal — relay via background.js
-    if (e.data?.wtEvent === 'signal' && session) {
-      chrome.runtime.sendMessage({
-        type: 'SIGNAL',
-        to: session.peerId,
-        signal: e.data.signal
+  async function startWebRTC() {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 160, height: 120, facingMode: 'user' },
+        audio: true
       });
+      setStream('wt-local', localStream);
+
+      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+      pc.ontrack = (e) => { if (e.streams[0]) setStream('wt-remote', e.streams[0]); };
+      pc.onicecandidate = (e) => {
+        if (e.candidate) sendSignal({ type: 'ice', candidate: e.candidate });
+      };
+
+      if (session.isHost && session.peerId) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendSignal({ type: 'offer', sdp: offer });
+      }
+    } catch (err) {
+      console.warn('WatchTogether WebRTC error:', err);
     }
-  });
+  }
 
-  // --- INCOMING FROM BACKGROUND.JS ---
+  function setStream(id, stream) {
+    const el = document.getElementById(id);
+    if (el) el.srcObject = stream;
+  }
+
+  function sendSignal(signal) {
+    if (!session || !session.peerId) return;
+    chrome.runtime.sendMessage({ type: 'SIGNAL', to: session.peerId, signal });
+  }
+
   chrome.runtime.onMessage.addListener((message) => {
-
-    // Playback sync
     if (message.event === 'sync' && video) {
       const { action, currentTime } = message.data.payload;
       isSyncing = true;
@@ -65,27 +130,38 @@
       setTimeout(() => { isSyncing = false; }, 500);
     }
 
-    // Peer joined — save peerId, trigger offer if host
     if (message.event === 'peer-joined' && session) {
       session.peerId = message.data.peerId;
       chrome.storage.local.set({ session });
-      if (session.isHost) {
-        window.postMessage({ wtCmd: 'startRTC', isHost: true, peerId: session.peerId }, '*');
+      if (session.isHost && pc) {
+        pc.createOffer().then(offer => {
+          pc.setLocalDescription(offer);
+          sendSignal({ type: 'offer', sdp: offer });
+        });
+      } else if (!session.isHost && !pc) {
+        startWebRTC();
       }
     }
 
-    // WebRTC signal arrived — forward to webrtc.js in MAIN world
-    if (message.event === 'signal') {
-      window.postMessage({ wtCmd: 'rtcSignal', signal: message.data.signal }, '*');
+    if (message.event === 'signal' && pc) {
+      const sig = message.data.signal;
+      if (sig.type === 'offer') {
+        pc.setRemoteDescription(new RTCSessionDescription(sig.sdp))
+          .then(() => pc.createAnswer())
+          .then(ans => { pc.setLocalDescription(ans); sendSignal({ type: 'answer', sdp: ans }); });
+      }
+      if (sig.type === 'answer') pc.setRemoteDescription(new RTCSessionDescription(sig.sdp));
+      if (sig.type === 'ice')    pc.addIceCandidate(new RTCIceCandidate(sig.candidate));
     }
 
-    // Peer left
     if (message.event === 'peer-left') {
-      window.postMessage({ wtCmd: 'destroy' }, '*');
+      localStream && localStream.getTracks().forEach(t => t.stop());
+      pc && pc.close(); pc = null;
+      const pip = document.getElementById('wt-pip');
+      if (pip) pip.remove();
     }
   });
 
-  // --- VIDEO DETECTION + SYNC ---
   function detectVideo() {
     const interval = setInterval(() => {
       video = document.querySelector('video');
