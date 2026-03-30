@@ -12,44 +12,34 @@
     "https://www.amazon.com/*",
     "https://www.primevideo.com/*",
     "https://www.hotstar.com/*",
-    "https://www.sonyliv.com/*",
-    "<all_urls>"
+    "https://www.sonyliv.com/*"
   ],
 
   "background": { "service_worker": "background.js" },
 
   "action": {
     "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
   },
 
-  "content_scripts": [
-    {
-      "matches": [
-        "https://www.netflix.com/*",
-        "https://www.youtube.com/*",
-        "https://www.amazon.com/*",
-        "https://www.primevideo.com/*",
-        "https://www.hotstar.com/*",
-        "https://www.sonyliv.com/*"
-      ],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["<all_urls>"],
-      "js": ["screenshare.js"],
-      "run_at": "document_idle"
-    }
-  ],
+  "content_scripts": [{
+    "matches": [
+      "https://www.netflix.com/*", "https://www.youtube.com/*",
+      "https://www.amazon.com/*",  "https://www.primevideo.com/*",
+      "https://www.hotstar.com/*", "https://www.sonyliv.com/*"
+    ],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }],
 
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  }
+  "web_accessible_resources": [{
+    "resources": ["webrtc.js", "pip.js", "icons/*.png"],
+    "matches": [
+      "https://www.netflix.com/*", "https://www.youtube.com/*",
+      "https://www.amazon.com/*",  "https://www.primevideo.com/*",
+      "https://www.hotstar.com/*", "https://www.sonyliv.com/*"
+    ]
+  }],
+
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
 }
