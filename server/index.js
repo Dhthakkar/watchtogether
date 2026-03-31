@@ -83,19 +83,25 @@ io.on('connection', (socket) => {
   });
 
   socket.on('sync', ({ roomId, payload, hmac }) => {
+    console.log('Sync event received:', { roomId, payload: payload.action, hmac: hmac ? 'present' : 'MISSING' });
     const room = rooms[roomId];
-    if (!room) return;
-
-    const expectedHmac = signMessage(payload, room.secret);
-    if (hmac !== expectedHmac) {
-      console.warn('Invalid HMAC from', socket.id);
+    if (!room) {
+      console.warn('Room not found:', roomId);
       return;
     }
 
+    const expectedHmac = signMessage(payload, room.secret);
+    if (hmac !== expectedHmac) {
+      console.warn('Invalid HMAC from', socket.id, { received: hmac, expected: expectedHmac });
+      return;
+    }
+
+    console.log('Forwarding sync to room members');
     socket.to(roomId).emit('sync', { payload });
   });
 
   socket.on('chat', ({ roomId, ciphertext }) => {
+    console.log('Chat event received:', { roomId, ciphertext: ciphertext ? 'present' : 'MISSING' });
     socket.to(roomId).emit('chat', { from: socket.id, ciphertext });
   });
 

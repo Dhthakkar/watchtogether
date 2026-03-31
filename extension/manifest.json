@@ -35,6 +35,7 @@
   "content_scripts": [
     {
       "matches": [
+        "https://www.netflix.com/*",
         "https://www.youtube.com/*",
         "https://www.amazon.com/*",
         "https://www.primevideo.com/*",
@@ -43,13 +44,13 @@
       ],
       "js": ["libsodium.js", "purify.min.js", "content.js"],
       "run_at": "document_idle"
-    },
+    }
+  ],
+
+  "web_accessible_resources": [
     {
-      "matches": [
-        "https://www.netflix.com/*"
-      ],
-      "js": ["netflix-content.js"],
-      "run_at": "document_idle"
+      "resources": ["libsodium.js", "purify.min.js", "content.js"],
+      "matches": ["<all_urls>"]
     }
   ],
 
@@ -57,12 +58,5 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-
-  "web_accessible_resources": [
-    {
-      "resources": ["libsodium.js", "purify.min.js"],
-      "matches": ["https://www.netflix.com/*"]
-    }
-  ]
+  }
 }

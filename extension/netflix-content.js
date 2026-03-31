@@ -339,14 +339,16 @@
     video.addEventListener('seeked',() => sendSync('seek',  video.currentTime));
   }
 
-  function sendSync(action, currentTime) {
+  async function sendSync(action, currentTime) {
     if (isSyncing || !session) return;
     const payload = { action, currentTime, timestamp: Date.now() };
+    const hmac = await signPayload(payload, session.roomSecret);
+    console.log('Sending sync (Netflix):', { action, currentTime, hmac: hmac ? 'generated' : 'failed' });
     chrome.runtime.sendMessage({
       type: 'SYNC',
       roomId: session.roomId,
       payload,
-      hmac: signPayload(payload, session.roomSecret)
+      hmac
     });
   }
 
@@ -363,9 +365,11 @@
   // ─── INCOMING MESSAGES FROM BACKGROUND ────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((message) => {
+    console.log('Netflix content script received message:', message);
 
     // Playback sync
     if (message.event === 'sync' && video) {
+      console.log('Processing sync event (Netflix):', message.data.payload);
       const { action, currentTime } = message.data.payload;
       isSyncing = true;
       if (action === 'play')  { video.currentTime = currentTime; video.play(); }
@@ -376,6 +380,7 @@
 
     // Chat — decrypt → sanitize → render
     if (message.event === 'chat') {
+      console.log('Processing chat event (Netflix) from:', message.data.from);
       if (!sodiumKey || !DOMPurify) return;
       const plain = decryptMessage(message.data.ciphertext);
       if (!plain) return; // drop if decryption fails
