@@ -11,10 +11,15 @@ let socket = null;
 function connectSocket() {
   if (socket && socket.connected) return;
 
-  socket = io(SERVER_URL, { transports: ['websocket'] });
+  socket = io(SERVER_URL, { 
+    transports: ['websocket', 'polling'],
+    timeout: 20000,
+    forceNew: true
+  });
 
   socket.on('connect', () => console.log('WatchTogether: socket connected', socket.id));
   socket.on('disconnect', () => console.log('WatchTogether: socket disconnected'));
+  socket.on('connect_error', (error) => console.log('WatchTogether: socket connection error:', error.message));
 
   // Forward all server events to content script via chrome.tabs
   const forwardEvents = ['sync', 'chat', 'reaction', 'peer-joined', 'peer-left', 'signal'];

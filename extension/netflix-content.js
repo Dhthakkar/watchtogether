@@ -1,4 +1,5 @@
-// content.js — Phase 5: Chat + Reactions + E2E encryption + sync engine
+// netflix-content.js - Netflix-specific content script with programmatic injection
+// Handles Netflix CSP by injecting scripts dynamically
 
 (function () {
   if (window.__watchTogetherLoaded) return;
@@ -7,25 +8,53 @@
   let session = null;
   let video = null;
   let isSyncing = false;
-  let sodiumKey = null; // 32-byte symmetric key derived from roomSecret
+  let sodiumKey = null;
+  let sodium = null;
+  let DOMPurify = null;
 
   // --- BOOT ---
   chrome.storage.local.get('session', async (result) => {
     if (!result.session) return;
     session = result.session;
+    
+    // Inject dependencies for Netflix due to CSP
+    await injectDependencies();
     await initEncryption();
     detectVideo();
     injectChatUI();
   });
 
+  // --- DEPENDENCY INJECTION FOR NETFLIX CSP ---
+  async function injectDependencies() {
+    return new Promise((resolve) => {
+      // Inject libsodium
+      const sodiumScript = document.createElement('script');
+      sodiumScript.src = chrome.runtime.getURL('libsodium.js');
+      sodiumScript.onload = () => {
+        sodium = window.sodium;
+        
+        // Inject DOMPurify
+        const purifyScript = document.createElement('script');
+        purifyScript.src = chrome.runtime.getURL('purify.min.js');
+        purifyScript.onload = () => {
+          DOMPurify = window.DOMPurify;
+          resolve();
+        };
+        document.head.appendChild(purifyScript);
+      };
+      document.head.appendChild(sodiumScript);
+    });
+  }
+
   // ─── ENCRYPTION ────────────────────────────────────────────────────────────
 
   // Derive symmetric key from shared roomSecret via BLAKE2b (libsodium)
   async function initEncryption() {
-    if (!window.sodium) {
+    if (!sodium) {
       await new Promise(resolve => {
         const checkSodium = () => {
           if (window.sodium && window.sodium.ready) {
+            sodium = window.sodium;
             resolve();
           } else {
             setTimeout(checkSodium, 100);
@@ -202,7 +231,7 @@
     const input = document.getElementById('wt-input');
     const doSend = () => {
       const raw = input.value.trim();
-      if (!raw) return;
+      if (!raw || !DOMPurify) return;
       // DOMPurify strips all tags/attrs — plain text only
       const clean = DOMPurify.sanitize(raw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
       if (!clean) return;
@@ -347,7 +376,7 @@
 
     // Chat — decrypt → sanitize → render
     if (message.event === 'chat') {
-      if (!sodiumKey) return;
+      if (!sodiumKey || !DOMPurify) return;
       const plain = decryptMessage(message.data.ciphertext);
       if (!plain) return; // drop if decryption fails
       const safe = DOMPurify.sanitize(plain, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
