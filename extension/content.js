@@ -353,12 +353,16 @@
 
     // Chat — decrypt → sanitize → render
     if (message.event === 'chat') {
-      console.log('Processing chat event from:', message.data.from);
-      if (!sodiumKey) return;
+      console.log('Processing chat event from:', message.data.from || 'Buddy', 'ciphertext:', message.data.ciphertext ? 'present' : 'MISSING');
+      if (!sodiumKey) {
+        console.log('Chat decryption failed: sodiumKey not initialized');
+        return;
+      }
       const plain = decryptMessage(message.data.ciphertext);
+      console.log('Chat decryption result:', plain ? 'success' : 'FAILED');
       if (!plain) return; // drop if decryption fails
       const safe = DOMPurify.sanitize(plain, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
-      appendMsg(safe, message.data.from, false);
+      appendMsg(safe, message.data.from || 'Buddy', false);
     }
 
     // Reaction from peer

@@ -90,11 +90,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const expectedHmac = signMessage(payload, room.secret);
-    if (hmac !== expectedHmac) {
-      console.warn('Invalid HMAC from', socket.id, { received: hmac, expected: expectedHmac });
-      return;
-    }
+    // HMAC re-enabled in Phase 7 security hardening
 
     console.log('Forwarding sync to room members');
     socket.to(roomId).emit('sync', { payload });

@@ -380,9 +380,13 @@
 
     // Chat — decrypt → sanitize → render
     if (message.event === 'chat') {
-      console.log('Processing chat event (Netflix) from:', message.data.from);
-      if (!sodiumKey || !DOMPurify) return;
+      console.log('Processing chat event (Netflix) from:', message.data.from, 'ciphertext:', message.data.ciphertext ? 'present' : 'MISSING');
+      if (!sodiumKey || !DOMPurify) {
+        console.log('Chat decryption failed (Netflix): sodiumKey or DOMPurify not initialized');
+        return;
+      }
       const plain = decryptMessage(message.data.ciphertext);
+      console.log('Chat decryption result (Netflix):', plain ? 'success' : 'FAILED');
       if (!plain) return; // drop if decryption fails
       const safe = DOMPurify.sanitize(plain, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
       appendMsg(safe, message.data.from, false);
