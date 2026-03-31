@@ -4,47 +4,52 @@
   "version": "0.1.0",
   "description": "Watch parties for couples and friend groups",
 
-  "permissions": ["activeTab", "storage", "scripting"],
-
-  "host_permissions": [
-    "https://www.netflix.com/*", "https://www.youtube.com/*",
-    "https://www.amazon.com/*",  "https://www.primevideo.com/*",
-    "https://www.hotstar.com/*", "https://www.sonyliv.com/*"
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
   ],
 
-  "background": { "service_worker": "background.js" },
+  "host_permissions": [
+    "https://www.netflix.com/*",
+    "https://www.youtube.com/*",
+    "https://www.amazon.com/*",
+    "https://www.primevideo.com/*",
+    "https://www.hotstar.com/*",
+    "https://www.sonyliv.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
 
   "action": {
     "default_popup": "popup.html",
-    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
 
   "content_scripts": [
     {
       "matches": [
-        "https://www.netflix.com/*", "https://www.youtube.com/*",
-        "https://www.amazon.com/*",  "https://www.primevideo.com/*",
-        "https://www.hotstar.com/*", "https://www.sonyliv.com/*"
+        "https://www.netflix.com/*",
+        "https://www.youtube.com/*",
+        "https://www.amazon.com/*",
+        "https://www.primevideo.com/*",
+        "https://www.hotstar.com/*",
+        "https://www.sonyliv.com/*"
       ],
-      "js": ["webrtc.js", "pip.js"],
-      "run_at": "document_idle",
-      "world": "MAIN"
-    },
-    {
-      "matches": [
-        "https://www.netflix.com/*", "https://www.youtube.com/*",
-        "https://www.amazon.com/*",  "https://www.primevideo.com/*",
-        "https://www.hotstar.com/*", "https://www.sonyliv.com/*"
-      ],
-      "js": ["content.js"],
+      "js": ["libsodium.js", "purify.min.js", "content.js"],
       "run_at": "document_idle"
     }
   ],
 
-  "web_accessible_resources": [{
-    "resources": ["icons/*.png"],
-    "matches": ["<all_urls>"]
-  }],
-
-  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }
