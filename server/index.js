@@ -224,3 +224,17 @@ function verifyMessage(data) {
 
 module.exports._verifyMessage = verifyMessage;
 module.exports._signMessage = signMessage;
+
+// Phase 7: Periodic cleanup of expired rooms every 5 minutes
+// Prevents memory leak from abandoned rooms on free-tier server
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  Object.keys(rooms).forEach(roomId => {
+    if (rooms[roomId].expiresAt && now > rooms[roomId].expiresAt) {
+      delete rooms[roomId];
+      cleaned++;
+    }
+  });
+  if (cleaned > 0) console.log(`Cleaned ${cleaned} expired rooms`);
+}, 5 * 60 * 1000);
