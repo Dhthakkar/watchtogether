@@ -6,6 +6,8 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
+
 
 const app = express();
 const server = http.createServer(app);
@@ -146,7 +148,7 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => console.log('Signaling server running on port', PORT));
 
 // REST endpoints for web app lobby (same logic as socket events)
-app.post('/create-room', (req, res) => {
+app.post('/create-room', rateLimit({ windowMs: 60*60*1000, max: 10, message: { error: 'Too many rooms' } }), (req, res) => {
   const { mode, displayName } = req.body;
   const roomId = generateRoomId();
   const roomSecret = crypto.randomBytes(16).toString('hex');
@@ -164,7 +166,7 @@ app.post('/create-room', (req, res) => {
   res.json({ roomId, roomSecret, expiresAt });
 });
 
-app.post('/join-room', (req, res) => {
+app.post('/join-room', rateLimit({ windowMs: 15*60*1000, max: 20, message: { error: 'Too many attempts' } }), (req, res) => {
   const { roomId, displayName } = req.body;
   const room = rooms[roomId];
 
