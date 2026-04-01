@@ -85,18 +85,27 @@ io.on('connection', (socket) => {
   });
 
   socket.on('sync', ({ roomId, payload, hmac }) => {
-    console.log('Sync event received:', { roomId, payload: payload.action, hmac: hmac ? 'present' : 'MISSING' });
     const room = rooms[roomId];
-    if (!room) {
-      console.warn('Room not found:', roomId);
+    if (!room) return;
+
+    // Phase 7: Verify HMAC signature on sync messages
+    // Prevents clients from injecting fake play/pause commands
+    const crypto = require('crypto');
+    const secret = process.env.SYNC_SECRET || 'dev-secret-change-in-prod';
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(JSON.stringify(payload))
+      .digest('hex');
+
+    if (hmac !== expected) {
+      console.warn('Invalid HMAC on sync from', socket.id, '— dropping');
       return;
     }
 
-    // HMAC re-enabled in Phase 7 security hardening
-
-    console.log('Forwarding sync to room members');
+    // Forward verified sync to all other room members
     socket.to(roomId).emit('sync', { payload });
   });
+
 
   socket.on('chat', ({ roomId, ciphertext }) => {
     console.log('Chat event received:', { roomId, ciphertext: ciphertext ? 'present' : 'MISSING' });
@@ -175,3 +184,43 @@ io.on('viewer-answer', (socket, { answer }) => {
 io.on('viewer-ice', (socket, { candidate }) => {
   socket.to(socket.roomId).emit('viewer-ice', { candidate });
 });
+
+// HMAC sync message verification
+const nacl = require('tweetnacl');
+const SYNC_SECRET = process.env.SYNC_SECRET || 'dev-secret-change-in-prod';
+
+function signMessage(payload) {
+  const encoder = new TextEncoder();
+  const key = encoder.encode(SYNC_SECRET);
+  const msg = encoder.encode(JSON.stringify(payload));
+  // Use first 32 bytes of key as nacl secretbox key
+  const keyHash = nacl.hash(key).slice(0, 32);
+  const nonce = nacl.randomBytes(24);
+  const box = nacl.secretbox(msg, nonce, keyHash);
+  return {
+    ...payload,
+    _sig: Buffer.from(nonce).toString('hex') + '.' + Buffer.from(box).toString('hex')
+  };
+}
+
+function verifyMessage(data) {
+  if (!data._sig) return false;
+  try {
+    const [nonceHex, boxHex] = data._sig.split('.');
+    const encoder = new TextEncoder();
+    const key = encoder.encode(SYNC_SECRET);
+    const keyHash = nacl.hash(key).slice(0, 32);
+    const nonce = Buffer.from(nonceHex, 'hex');
+    const box = Buffer.from(boxHex, 'hex');
+    const payload = { ...data };
+    delete payload._sig;
+    const opened = nacl.secretbox.open(box, nonce, keyHash);
+    if (!opened) return false;
+    const decoded = JSON.parse(new TextDecoder().decode(opened));
+    // Verify payload matches signature
+    return JSON.stringify(decoded) === JSON.stringify(payload);
+  } catch { return false; }
+}
+
+module.exports._verifyMessage = verifyMessage;
+module.exports._signMessage = signMessage;

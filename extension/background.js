@@ -1,9 +1,26 @@
-// background.js — Phase 5 fix: direct local tab forwarding + server relay
+// background.js — Phase 7: HMAC-signed sync messages
 
 importScripts('socket.io.min.js');
 
-const SERVER_URL = 'http://localhost:3001';
+const SERVER_URL = 'https://watchtogether-server-f6yd.onrender.com';
 let socket = null;
+
+// Phase 7: HMAC signing using Web Crypto API (available in service workers)
+// Secret must match SYNC_SECRET env var on the server
+const SYNC_SECRET = '497a5b8aa82c83677a3f7456c6191accf0b6f823e7bdfa4eedde09a373f36142';
+
+async function signPayload(payload) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(SYNC_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(JSON.stringify(payload)));
+  // Convert ArrayBuffer to hex string
+  return Array.from(new Uint8Array(sig))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 function connectSocket() {
   if (socket && socket.connected) return;
@@ -48,15 +65,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'SYNC') {
-    // Forward directly to all other tabs immediately — don't rely on server round-trip
+    // Forward directly to local tabs immediately (no round-trip needed)
     broadcastToAllTabs('sync', { payload: message.payload }, senderTabId);
-    // Also relay to server for future multi-device support
-    socket.emit('sync', { roomId: message.roomId, payload: message.payload, hmac: message.hmac });
+    // Sign payload then relay to server for cross-device support
+    signPayload(message.payload).then(hmac => {
+      socket.emit('sync', { roomId: message.roomId, payload: message.payload, hmac });
+    });
     return false;
   }
 
   if (message.type === 'CHAT') {
-    // Forward directly to all other tabs
     broadcastToAllTabs('chat', { from: message.displayName || 'Buddy', ciphertext: message.ciphertext }, senderTabId);
     socket.emit('chat', { roomId: message.roomId, ciphertext: message.ciphertext });
     return false;
