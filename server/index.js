@@ -17,6 +17,8 @@ const io = new Server(server, {
   }
 });
 
+const cors = require('cors');
+app.use(cors());
 app.use(express.json());
 
 // Health check — Render.com pings this to keep server alive
@@ -105,6 +107,17 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('reaction', { from: socket.id, emoji });
   });
 
+
+  // Relay WebRTC answer from mobile viewer back to host
+  socket.on('viewer-answer', ({ answer }) => {
+    socket.to(socket.data.roomId).emit('viewer-answer', { answer });
+  });
+
+  // Relay ICE candidates between host and mobile viewer
+  socket.on('viewer-ice', ({ candidate }) => {
+    socket.to(socket.data.roomId).emit('viewer-ice', { candidate });
+  });
+
   socket.on('disconnect', () => {
     const roomId = socket.data.roomId;
     if (roomId && rooms[roomId]) {
@@ -122,3 +135,43 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => console.log('Signaling server running on port', PORT));
+
+// REST endpoints for web app lobby (same logic as socket events)
+app.post('/create-room', (req, res) => {
+  const { mode, displayName } = req.body;
+  const roomId = generateRoomId();
+  const roomSecret = crypto.randomBytes(16).toString('hex');
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+
+  rooms[roomId] = {
+    mode,
+    host: displayName,
+    members: [displayName],
+    secret: roomSecret,
+    expiresAt,
+    maxMembers: mode === 'together' ? 2 : 10
+  };
+
+  res.json({ roomId, roomSecret, expiresAt });
+});
+
+app.post('/join-room', (req, res) => {
+  const { roomId, displayName } = req.body;
+  const room = rooms[roomId];
+
+  if (!room) return res.json({ error: 'Room not found' });
+  if (Date.now() > room.expiresAt) return res.json({ error: 'Invite link expired' });
+  if (room.members.length >= room.maxMembers) return res.json({ error: 'Room is full' });
+
+  room.members.push(displayName);
+  res.json({ roomId, mode: room.mode });
+});
+
+// Viewer WebRTC signaling — relay between host and mobile viewer
+io.on('viewer-answer', (socket, { answer }) => {
+  socket.to(socket.roomId).emit('viewer-answer', { answer });
+});
+
+io.on('viewer-ice', (socket, { candidate }) => {
+  socket.to(socket.roomId).emit('viewer-ice', { candidate });
+});
