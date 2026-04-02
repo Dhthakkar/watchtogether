@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import DOMPurify from 'dompurify';
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3001';
 
@@ -136,7 +137,7 @@ export default function ViewerPage() {
   // ── send chat ─────────────────────────────────────────────────────────────
   const sendChat = () => {
     if (!chatInput.trim()) return;
-    const text = chatInput.trim().slice(0, 300); // cap length
+    const text = DOMPurify.sanitize(chatInput.trim().slice(0, 300), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
     socketRef.current?.emit('chat', { roomId: roomId.trim().toLowerCase(), text, displayName });
     setMessages(prev => [...prev, { from: 'You', text, id: Date.now() }]);
     setChatInput('');
