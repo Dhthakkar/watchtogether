@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WatchTogether",
-  "version": "0.1.0",
-  "description": "Watch parties for couples and friend groups",
+  "version": "1.0.0",
+  "description": "Sync Netflix, YouTube, Prime & Hotstar with friends. Chat, react, and watch together in real time.",
 
   "permissions": [
     "activeTab",
